@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Forecast Demand</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="./config.js"></script>
+  <style>
+    :root{
+      --bg:#0f131a; --bg2:#171c25; --bg3:#202734; --panel:#151a22; --line:#2d3746;
+      --text:#e8eef8; --muted:#9ba8bd; --blue:#60a5fa; --green:#2fd3a2; --orange:#ffb84d;
+      --red:#ff6b7a; --purple:#a78bfa; --teal:#4dd4c6;
+    }
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 Inter,Segoe UI,Arial,sans-serif}
+    button,input,select{font:inherit}
+    .app{display:grid;grid-template-columns:260px 1fr;grid-template-rows:auto auto 1fr auto;min-height:100vh}
+    .top{grid-column:1/-1;display:flex;align-items:center;gap:14px;padding:14px 18px;background:linear-gradient(180deg,#18202b,#121722);border-bottom:1px solid var(--line)}
+    .brand{font-weight:800;font-size:18px;letter-spacing:.2px}.brand span{color:var(--blue)}
+    .sub{color:var(--muted);font-size:12px}.grow{flex:1}
+    .btn{border:1px solid var(--line);background:var(--bg3);color:var(--text);padding:10px 14px;border-radius:10px;cursor:pointer}
+    .btn.primary{background:var(--blue);color:#06101e;border-color:transparent;font-weight:700}
+    .btn:disabled{opacity:.45;cursor:not-allowed}
+    .toolbar{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:10px;padding:12px 18px;background:var(--panel);border-bottom:1px solid var(--line)}
+    .ctrl{display:flex;align-items:center;gap:8px;background:var(--bg2);padding:8px 10px;border:1px solid var(--line);border-radius:10px}
+    .ctrl label{font-size:12px;color:var(--muted)}
+    .ctrl input,.ctrl select{background:#0d1219;border:1px solid var(--line);border-radius:8px;color:var(--text);padding:7px 9px}
+    .side{border-right:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;min-height:0}
+    .main{display:grid;grid-template-rows:auto auto 1fr;min-height:0}
+    .pane{padding:16px;border-bottom:1px solid var(--line)}
+    .title{font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:10px}
+    .dropZone{border:2px dashed #3a4960;border-radius:14px;padding:18px;background:#101621;text-align:center;transition:.15s}
+    .dropZone.drag{border-color:var(--blue);background:#101b2b}
+    .small{font-size:12px;color:var(--muted)}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.strong{font-weight:700}
+    .search{width:100%;padding:10px 12px;background:#101621;border:1px solid var(--line);color:var(--text);border-radius:10px}
+    .skuList{flex:1;overflow:auto;padding:8px}
+    .skuItem{width:100%;text-align:left;background:#111823;border:1px solid transparent;color:var(--text);padding:10px 12px;border-radius:12px;cursor:pointer;margin-bottom:8px}
+    .skuItem:hover,.skuItem.active{background:#172132;border-color:#32506f}
+    .skuCode{font-weight:700;color:var(--blue)} .skuDesc{font-size:12px;color:var(--muted);margin:3px 0 6px}
+    .skuMeta{display:flex;justify-content:space-between;font-size:11px;color:#b8c3d5}
+    .content{display:grid;grid-template-rows:auto 1fr auto;min-height:0}
+    .summary{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:1px;background:var(--line);border-bottom:1px solid var(--line)}
+    .card{background:var(--panel);padding:14px}.card .k{font-size:11px;text-transform:uppercase;color:var(--muted);letter-spacing:.08em}.card .v{font-size:28px;font-weight:800;margin-top:4px}
+    .tabs{display:flex;gap:8px;padding:12px 16px;background:var(--bg2);border-bottom:1px solid var(--line)}
+    .tabBtn{padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:#121924;color:var(--muted);cursor:pointer}
+    .tabBtn.active{background:#1a2433;color:var(--text);border-color:#3b4f6a}
+    .tab{display:none;min-height:0}.tab.active{display:grid}
+    .tabOverview{grid-template-rows:1fr}.tableWrap,.compWrap{overflow:auto;padding:14px 16px}
+    table{width:100%;border-collapse:collapse} th,td{padding:10px 12px;border-bottom:1px solid #243040;white-space:nowrap;vertical-align:top}
+    th{position:sticky;top:0;background:#121924;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+    tr:hover td{background:#121924} tr.selected td{background:#162132}
+    .up{color:var(--green)} .down{color:var(--red)} .flat{color:var(--muted)}
+    .tabChart{grid-template-columns:minmax(0,1fr) 330px}
+    .chartPanel{display:grid;grid-template-rows:auto 1fr;padding:14px 16px;gap:10px;min-height:0}
+    .chartHeader{display:flex;justify-content:space-between;gap:12px;align-items:center}
+    .chartWrap{position:relative;border:1px solid var(--line);border-radius:14px;background:#101621;min-height:420px;overflow:hidden}
+    .chartTip{position:absolute;min-width:160px;max-width:220px;background:rgba(9,13,19,.96);border:1px solid #36465b;border-radius:10px;padding:10px;font-size:12px;pointer-events:none;box-shadow:0 12px 28px rgba(0,0,0,.35)}
+    .chartTip.hidden{display:none}.tipTitle{font-weight:700;color:var(--blue);margin-bottom:6px}.tipRow{display:flex;justify-content:space-between;gap:12px;margin:3px 0}
+    .sideInfo{border-left:1px solid var(--line);background:var(--panel);padding:16px;overflow:auto}
+    .infoGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.infoGrid div{background:#101621;border:1px solid var(--line);border-radius:12px;padding:10px}.infoGrid span{display:block;color:var(--muted);font-size:12px;margin-bottom:3px}
+    .scoreRow{display:flex;justify-content:space-between;gap:12px;padding:10px 12px;background:#101621;border:1px solid var(--line);border-radius:12px;margin-bottom:8px}
+    .scoreRow.winner{border-color:#4a7ec2;background:#0f1a2b}
+    .footer{grid-column:1/-1;display:flex;justify-content:space-between;gap:12px;padding:10px 18px;background:#0d1219;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+    .status{display:inline-flex;align-items:center;gap:8px}.status::before{content:'';width:8px;height:8px;border-radius:50%;background:#778299}
+    .status.ok::before{background:var(--green)}.status.run::before{background:var(--orange)}.status.err::before{background:var(--red)}
+    .checkList{display:grid;gap:8px}.checkItem{display:flex;align-items:center;gap:10px;background:#101621;padding:9px 10px;border-radius:10px;border:1px solid var(--line)}
+    .dot{width:10px;height:10px;border-radius:50%}
+    .empty{display:grid;place-items:center;height:100%;color:var(--muted)}
+    @media (max-width: 1200px){ .summary{grid-template-columns:repeat(3,minmax(0,1fr))} .tabChart{grid-template-columns:1fr} .app{grid-template-columns:1fr} .side{display:none} }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="top">
+      <div>
+        <div class="brand" id="appTitle">Forecast <span>Demand</span></div>
+        <div class="sub" id="fileInfo">No file loaded</div>
+      </div>
+      <div class="grow"></div>
+      <div class="sub">Backend: <span class="mono" id="apiUrl"></span></div>
+      <button class="btn" onclick="document.getElementById('fileIn').click()">Open File</button>
+      <button class="btn primary" id="runBtn" onclick="runForecast()" disabled>Run Forecast</button>
+      <button class="btn" id="exportBtn" onclick="exportExcel()" disabled>Export Excel</button>
+    </header>
+
+    <div class="toolbar">
+      <div class="ctrl"><label>Horizon</label><select id="horizonUnit"><option value="week">Weeks</option><option value="month">Months</option></select><input id="horizonN" type="number" min="1" max="52" value="8" style="width:72px"></div>
+      <div class="ctrl"><label>History</label><input id="lookbackN" type="number" min="3" max="60" value="12" style="width:72px"><span class="small">months back</span></div>
+      <div class="ctrl"><label>Validation</label><input id="valN" type="number" min="1" max="24" value="4" style="width:72px"></div>
+      <div class="ctrl"><label>Season Period</label><input id="seasonN" type="number" min="2" max="24" value="4" style="width:72px"></div>
+      <div class="ctrl"><label>Exclude current month</label><input type="checkbox" id="excludeCurrent" checked></div>
+      <div class="ctrl"><label>Chart SKU</label><select id="skuSelect" onchange="pickSku(this.value)"><option value="">Select SKU</option></select></div>
+    </div>
+
+    <aside class="side">
+      <div class="pane">
+        <div class="title">Import data</div>
+        <div id="dropZone" class="dropZone">
+          <input type="file" id="fileIn" accept=".xlsx,.xls,.csv" hidden>
+          <div style="font-size:34px;margin-bottom:8px">📊</div>
+          <div class="strong">Drop file here or click Open File</div>
+          <div class="small" style="margin-top:8px">Accepted columns: Description, ItemCode, PostingDate, Sum of Quantity — or Year/Month/Week input.</div>
+        </div>
+        <div class="small" id="loadedCount" style="margin-top:10px">0 canonical rows ready</div>
+      </div>
+      <div class="pane">
+        <div class="title">Models</div>
+        <div id="modelChecklist" class="checkList"></div>
+      </div>
+      <div class="pane" style="border-bottom:none;display:flex;flex-direction:column;min-height:220px">
+        <div class="title">SKU Navigator</div>
+        <input class="search" id="skuSearch" placeholder="Search SKU or description" oninput="renderSkuList()">
+        <div class="skuList" id="skuList"><div class="empty">Load a file first</div></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <section class="summary">
+        <div class="card"><div class="k">Total SKUs</div><div class="v" id="kSku">—</div></div>
+        <div class="card"><div class="k">Avg MAPE</div><div class="v" id="kMape">—</div></div>
+        <div class="card"><div class="k">Avg NMAE</div><div class="v" id="kNmae">—</div></div>
+        <div class="card"><div class="k">Avg Rank</div><div class="v" id="kRank">—</div></div>
+        <div class="card"><div class="k">Trending Up</div><div class="v" id="kUp">—</div></div>
+        <div class="card"><div class="k">Trending Down</div><div class="v" id="kDn">—</div></div>
+        <div class="card"><div class="k">Horizon Total</div><div class="v" id="kTotal">—</div></div>
+      </section>
+
+      <div class="tabs">
+        <button class="tabBtn active" onclick="showTab('overview',this)">Forecast Table</button>
+        <button class="tabBtn" onclick="showTab('chart',this)">Chart View</button>
+        <button class="tabBtn" onclick="showTab('competition',this)">Model Competition</button>
+      </div>
+
+      <section class="content">
+        <div id="tab-overview" class="tab tabOverview active">
+          <div class="tableWrap">
+            <table>
+              <thead>
+                <tr>
+                  <th onclick="setSort('code')">Item Code</th>
+                  <th onclick="setSort('desc')">Description</th>
+                  <th onclick="setSort('model_name')">Winner Model</th>
+                  <th onclick="setSort('rank_score')">Rank</th>
+                  <th onclick="setSort('mape')">MAPE%</th>
+                  <th onclick="setSort('nmae')">NMAE%</th>
+                  <th onclick="setSort('avg_per_period')">Avg/Period</th>
+                  <th onclick="setSort('total_hist')">Total Hist</th>
+                  <th>Trend</th>
+                  <th onclick="setSort('outlier_count')">Outliers</th>
+                  <th onclick="setSort('next4')">Next 4</th>
+                  <th onclick="setSort('forecast_total')">Forecast Total</th>
+                </tr>
+              </thead>
+              <tbody id="overviewBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="tab-chart" class="tab tabChart">
+          <div class="chartPanel">
+            <div class="chartHeader">
+              <div>
+                <div class="title" style="margin-bottom:4px">Forecast vs history</div>
+                <div class="small">Training = green · validation actual = orange · winner validation = blue · future forecast = purple dashed</div>
+              </div>
+            </div>
+            <div class="chartWrap" id="chartWrap"><div class="empty">Run a forecast and select a SKU.</div></div>
+          </div>
+          <aside class="sideInfo">
+            <div class="title">SKU information</div>
+            <div id="skuInfo"></div>
+            <div class="title" style="margin-top:18px">Model competition</div>
+            <div id="modelCompetition"></div>
+          </aside>
+        </div>
+
+        <div id="tab-competition" class="tab activeOff">
+          <div class="compWrap">
+            <table>
+              <thead id="competitionHead"></thead>
+              <tbody id="competitionBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="status idle" id="status"><span id="statusMsg">Ready — load a file to begin.</span></div>
+      <div>Frontend = GitHub Pages · Backend = private FastAPI service</div>
+    </footer>
+  </div>
+
+  <script>
+    function showTab(name, btn){
+      document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.tabBtn').forEach(el => el.classList.remove('active'));
+      document.getElementById('tab-' + name).classList.add('active');
+      btn.classList.add('active');
+      if(name === 'chart' && window.renderChart) window.renderChart();
+    }
+  </script>
+  <script src="./app.js"></script>
+</body>
+</html>
